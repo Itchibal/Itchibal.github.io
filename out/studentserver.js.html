@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: studentserver.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: studentserver.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>//studentserver.js
+
+const express = require('express')
+const app = express()
+const bodyParser = require('body-parser');
+const fs = require('fs');
+const glob = require("glob")
+
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: false }))
+app.use(express.static('./public'));
+
+/**
+ * Creates a new Student from a POST request from http://localhost:5678/students given Information
+ * @method: /students
+ * @function
+ * @name POST_AddStudent
+ * @param {String} first_name - Student's First Name
+ * @param {String} last_name - Students's Last Name
+ * @param {Number} gpa - Students's GPA
+ * @param {Boolean} enrolled - If student is enrolled
+ * @example HTTPRequest:POST Body(JSON):{ "first_name":"Walter", "last_name": "White","gpa":"99.99", "enrolled": "false"}
+ * @returns {Object} - Returns an Object with New Student Info
+ */
+
+app.post('/students', function(req, res) {
+  var record_id = new Date().getTime();
+
+  var obj = {};
+  obj.record_id = record_id;
+  obj.first_name = req.body.first_name;
+  obj.last_name = req.body.last_name;
+  obj.gpa = req.body.gpa;
+  obj.enrolled = req.body.enrolled;
+
+  var str = JSON.stringify(obj, null, 2);
+
+  fs.writeFile("students/" + record_id + ".json", str, function(err) {
+    var rsp_obj = {};
+    if(err) {
+      rsp_obj.record_id = -1;
+      rsp_obj.message = 'error - unable to create resource';
+      return res.status(200).send(rsp_obj);
+    } else {
+      rsp_obj.record_id = record_id;
+      rsp_obj.message = 'successfully created';
+      return res.status(201).send(rsp_obj);
+    }
+  }); //end writeFile method
+  
+}); //end post method
+
+/**
+ * Retrieves a Student's Information when given a record_id in the URL http://localhost:5678/students/record_id
+ * @method: /students/:record_id
+ * @function
+ * @name GET_StudentByRecord
+ * @param {Number} record_id - The student's record ID
+ * @example HTTPRequest:GET URL:http://localhost:5678/students/1677393409935 gets student record 1677393409935
+ * @returns {Object} - Returns Student with Matching record ID
+ */
+
+app.get('/students/:record_id', function(req, res) {
+  var record_id = req.params.record_id;
+
+  fs.readFile("students/" + record_id + ".json", "utf8", function(err, data) {
+    if (err) {
+      var rsp_obj = {};
+      rsp_obj.record_id = record_id;
+      rsp_obj.message = 'error - resource not found';
+      return res.status(404).send(rsp_obj);
+    } else {
+      return res.status(200).send(data);
+    }
+  });
+}); 
+
+function readFiles(files,arr,res) {
+  fname = files.pop();
+  if (!fname)
+    return;
+  fs.readFile(fname, "utf8", function(err, data) {
+    if (err) {
+      return res.status(500).send({"message":"error - internal server error"});
+    } else {
+      arr.push(JSON.parse(data));
+      if (files.length == 0) {
+        var obj = {};
+        obj.students = arr;
+        return res.status(200).send(obj);
+      } else {
+        readFiles(files,arr,res);
+      }
+    }
+  });  
+}
+
+/**
+ * Retrieves ALL the Student's Information with a GET request with URL http://localhost:5678/students
+ * @method: /students
+ * @function
+ * @name GET_AllStudents
+ * @example HTTPRequest:GET URL:http://localhost:5678/students 
+ * @returns {Object} - Returns all Students
+ */
+
+app.get('/students', function(req, res) {
+  var obj = {};
+  var arr = [];
+  filesread = 0;
+
+  glob("students/*.json", null, function (err, files) {
+    if (err) {
+      return res.status(500).send({"message":"error - internal server error"});
+    }
+    readFiles(files,[],res);
+  });
+
+});
+
+/**
+ * Changes a Student's Information when given a target record_id in the URL and the new information. http://localhost:5678/students/record_id
+ * @method: /students/:record_id
+ * @function
+ * @name PUT_ChangeStudent
+ * @param {String} first_name - Student's First Name
+ * @param {String} last_name - Students's Last Name
+ * @param {Number} gpa - Students's GPA
+ * @param {Boolean} enrolled - If student is enrolled
+ * @param {Number} record_id - Students's Record ID
+ * @example HTTPRequest:PUT URL:http://localhost:5678/students/1677393409935 Body(JSON):{ "first_name":"Afrien", "last_name": "Hectabal","gpa":"1.2", "enrolled": "false"}
+ * @returns {Object} - Returns an Object with updated student info.
+ */
+
+app.put('/students/:record_id', function(req, res) {
+  var record_id = req.params.record_id;
+  var fname = "students/" + record_id + ".json";
+  var rsp_obj = {};
+  var obj = {};
+
+  obj.record_id = record_id;
+  obj.first_name = req.body.first_name;
+  obj.last_name = req.body.last_name;
+  obj.gpa = req.body.gpa;
+  obj.enrolled = req.body.enrolled;
+
+  var str = JSON.stringify(obj, null, 2);
+
+  //check if file exists
+  fs.stat(fname, function(err) {
+    if(err == null) {
+
+      //file exists
+      fs.writeFile("students/" + record_id + ".json", str, function(err) {
+        var rsp_obj = {};
+        if(err) {
+          rsp_obj.record_id = record_id;
+          rsp_obj.message = 'error - unable to update resource';
+          return res.status(200).send(rsp_obj);
+        } else {
+          rsp_obj.record_id = record_id;
+          rsp_obj.message = 'successfully updated';
+          return res.status(201).send(rsp_obj);
+        }
+      });
+      
+    } else {
+      rsp_obj.record_id = record_id;
+      rsp_obj.message = 'error - resource not found';
+      return res.status(404).send(rsp_obj);
+    }
+
+  });
+
+}); //end put method
+
+/**
+ * Deletes a Student's Record when given a record_id in the URL, http://localhost:5678/students/record_id
+ * @method: /students/:record_id
+ * @function
+ * @name DELETE_StudentRecord
+ * @param {Number} record_id - Students's Record ID
+ * @example HTTPRequest:DELETE URL:http://localhost:5678/students/1677393409935 deletes record_id 1677393409935
+ * @return {Object} - Returns Deleted Record ID and Confirmation Message
+ */
+
+app.delete('/students/:record_id', function(req, res) {
+  var record_id = req.params.record_id;
+  var fname = "students/" + record_id + ".json";
+
+  fs.unlink(fname, function(err) {
+    var rsp_obj = {};
+    if (err) {
+      rsp_obj.record_id = record_id;
+      rsp_obj.message = 'error - resource not found';
+      return res.status(404).send(rsp_obj);
+    } else {
+      rsp_obj.record_id = record_id;
+      rsp_obj.message = 'record deleted';
+      return res.status(200).send(rsp_obj);
+    }
+  });
+
+}); //end delete method
+
+app.listen(5678); //start the server
+console.log('Server is running...');</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#DELETE_StudentRecord">DELETE_StudentRecord</a></li><li><a href="global.html#GET_AllStudents">GET_AllStudents</a></li><li><a href="global.html#GET_StudentByRecord">GET_StudentByRecord</a></li><li><a href="global.html#POST_AddStudent">POST_AddStudent</a></li><li><a href="global.html#PUT_ChangeStudent">PUT_ChangeStudent</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.2</a> on Sun Feb 26 2023 19:59:22 GMT-0500 (Eastern Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
